@@ -1,8 +1,8 @@
 """Concurrency load test for a /v1/systemone endpoint.
 
-    python loadtest.py [--url http://127.0.0.1:11436] [--model clef-flash] [--n 256] [--concurrency 32]
+    python loadtest.py [--url http://127.0.0.1:11436] [--model clef-flash] [--n 256] [--concurrency 32] [--token ...]
 """
-import argparse, json, statistics, time, urllib.request
+import argparse, json, os, statistics, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 ap = argparse.ArgumentParser()
@@ -10,7 +10,10 @@ ap.add_argument("--url", default="http://127.0.0.1:11436")
 ap.add_argument("--model", default="clef-flash")
 ap.add_argument("--n", type=int, default=256)
 ap.add_argument("--concurrency", type=int, default=32)
+ap.add_argument("--token", default=os.environ.get("S1_TOKEN"), help="bearer token (or env S1_TOKEN)")
 a = ap.parse_args()
+HEADERS = {"Content-Type": "application/json", **({"Authorization": f"Bearer {a.token}"} if a.token else {})}
+URL = a.url if a.url.endswith("/v1/systemone") else a.url.rstrip("/") + "/v1/systemone"
 
 TICKETS = ["I was charged twice this month, please refund one.",
            "Production is down with 502 errors, customers can't check out!",
@@ -26,8 +29,7 @@ Q = {"team": {"type": "choice", "instructions": "Which team should handle this?"
 def call(i):
     body = json.dumps({"model": a.model, "state": {"ticket": TICKETS[i % len(TICKETS)]}, "questions": Q}).encode()
     t = time.perf_counter()
-    with urllib.request.urlopen(urllib.request.Request(a.url + "/v1/systemone", body,
-                                                       {"Content-Type": "application/json"}), timeout=600) as r:
+    with urllib.request.urlopen(urllib.request.Request(URL, body, HEADERS), timeout=600) as r:
         out = json.load(r)
     return (time.perf_counter() - t) * 1000, out["usage"]["input_tokens"]
 
